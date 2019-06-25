@@ -27,6 +27,12 @@ resources:
     password: ((DOCKER_REPO_PASSWORD))
     # Add Harbor to insecure_registries list for docker cli
     insecure_registries: [((DOCKER_REPO_HOST))]
+- name: pks-cli-dockerhub-repo
+  type: docker-image
+  source:
+    repository: ((DOCKERHUB_REPO_LOCATION))
+    username: ((DOCKERHUB_REPO_USERNAME))
+    password: ((DOCKERHUB_REPO_PASSWORD))
 - name: pks-cli-pivnet
   type: pivnet
   source:
@@ -48,7 +54,8 @@ jobs:
           platform: linux
           image_resource:
             type: docker-image
-            source: { repository: harbor.home.pcfdot.com/library/pks-cli, tag: "1.4", insecure_registries: [((DOCKER_REPO_HOST))] }
+            source:
+              repository: ubuntu:18.04
           inputs:
             - name: pks-cli-pipeline
             - name: pks-cli-pivnet
@@ -66,7 +73,12 @@ jobs:
                 chmod +x pks-cli-pipeline/pks
                 cp pks-cli-pivnet/kubectl-linux* pks-cli-pipeline/kubectl
                 chmod +x pks-cli-pipeline/kubectl                
-      - put: pks-cli-docker-repo
-        params:
-          build: pks-cli-pipeline
-          tag_as_latest: true
+      - in_parallel:
+        - put: pks-cli-docker-repo
+          params:
+            build: pks-cli-pipeline
+            tag_as_latest: true
+        - put: pks-cli-dockerhub-repo
+          params:
+            build: pks-cli-pipeline
+            tag_as_latest: true

@@ -1,0 +1,72 @@
+---
+resource_types:
+- name: pivnet
+  type: docker-image
+  source:
+    repository: pivotalcf/pivnet-resource
+    tag: latest-final
+- name: kubernetes
+  type: docker-image
+  source:
+    repository: zlabjp/kubernetes-resource
+    tag: "1.14"
+
+resources:
+- name: pks-cli-pipeline
+  type: git
+  source:
+    uri: https://github.com/sharadg/pks-cli-pipeline.git
+    branch: master
+- name: pks-cli-docker-repo
+  type: docker-image
+  source:
+    # repository: ((DOCKER_REPO_LOCATION))
+    # Use following patterns if image is going on Harbor
+    repository: ((DOCKER_REPO_HOST))/((DOCKER_REPO_LOCATION))
+    username: ((DOCKER_REPO_USERNAME))
+    password: ((DOCKER_REPO_PASSWORD))
+    # Add Harbor to insecure_registries list for docker cli
+    insecure_registries: [((DOCKER_REPO_HOST))]
+- name: pks-cli-pivnet
+  type: pivnet
+  source:
+    api_token: ((pivnet_api_token))
+    product_slug: pivotal-container-service
+    product_version: 1\.[45]\..*
+    sort_by: semver
+
+jobs:
+  - name: "Build PKS-CLI Docker Image"
+    plan:
+      - get: pks-cli-pipeline
+        trigger: true
+      - get: pks-cli-pivnet
+        params:
+          globs: ["*pks-linux*", "*kubectl-linux*"]
+      - task: list-out-files
+        config:
+          platform: linux
+          image_resource:
+            type: docker-image
+            source: { repository: harbor.home.pcfdot.com/library/pks-cli, tag: "1.4", insecure_registries: [((DOCKER_REPO_HOST))] }
+          inputs:
+            - name: pks-cli-pipeline
+            - name: pks-cli-pivnet
+          outputs:
+            - name: pks-cli-pipeline
+          run:
+            path: bash
+            args:
+              - "-c"
+              - |
+                set -eux
+                echo "Listing out contents of what was downloaded from Pivnet"
+                ls -lrt pks-cli-pivnet
+                cp pks-cli-pivnet/pks-linux* pks-cli-pipeline/pks
+                chmod +x pks-cli-pipeline/pks
+                cp pks-cli-pivnet/kubectl-linux* pks-cli-pipeline/kubectl
+                chmod +x pks-cli-pipeline/kubectl                
+      - put: pks-cli-docker-repo
+        params:
+          build: pks-cli-pipeline
+          tag_as_latest: true
